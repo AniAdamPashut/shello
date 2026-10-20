@@ -95,7 +95,7 @@ mod tests {
 
         assert_eq!(cfg.agent, "claude");
         assert_eq!(cfg.agents["claude"].print, ["claude", "-p"]);
-        assert_eq!(cfg.capture.commands, 3);
+        assert_eq!(cfg.capture.commands, 1);
         assert_eq!(cfg.capture.max_log_bytes, 2_097_152);
         assert!(cfg.redact.enabled);
         assert!(cfg.redact.patterns.is_empty());
