@@ -239,3 +239,19 @@ The question is the remaining argv joined with spaces, so quoting isn't needed.
 - Prompts larger than the per-argument limit (~128 KB) in interactive mode.
   Truncation normally keeps prompts far below this, but the builder picks
   the fallback.
+
+## Additions after the first build (2026-10-20, user requests and review)
+
+- **CLI parsing:** uses `clap` (derive). The behavior is unchanged, and it
+  adds generated `--help` and `--version`.
+- **Per-command cwd:** each record stores the directory the command was typed
+  in, and the prompt shows it as a `cwd:` line.
+- **Redaction:** a `redact` module scrubs secrets from command text and
+  output before sending. It's on by default, and `[redact]` in config holds
+  `enabled` and extra `patterns`. The on-disk log is not redacted.
+- **Hidden commands:** commands kept out of shell history are recorded as
+  placeholders, with no text and no output.
+- **Retention:** a session's files are deleted when its terminal closes, and
+  leftovers are deleted after 7 days, unless their shell is still running.
+- **Recording scope:** login shells stay login shells inside the recording.
+  The Linux console and `-c` shells are not recorded.

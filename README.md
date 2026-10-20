@@ -34,11 +34,12 @@ To remove it:
 ## Usage
 
 ```
-shello [options] [question...]
-  -p, --print        single answer, then exit (default: conversation)
-  -n, --commands N   how many past commands to include (default 3)
-  -a, --agent NAME   pick a configured agent
-      --show         print the built prompt and exit; call no agent
+shello [OPTIONS] [QUESTION]...
+  -p, --print           single answer, then exit (default: open a conversation)
+      --show            print the built prompt and exit; call no agent
+  -n, --commands <N>    how many past commands to include (default 3)
+  -a, --agent <NAME>    which configured agent to use
+  -h, --help / -V, --version
 ```
 
 - `shello why did that fail?` opens a conversation in the agent's own tool,
@@ -50,9 +51,14 @@ shello [options] [question...]
 No quoting is needed, because everything after the options is the question.
 Use `--` before a question that starts with `-`.
 
+Each command in the prompt comes with the directory it ran in, its exit
+code, and its output, with colors, progress-bar redraws and long middles
+stripped.
+
 ## Configuration
 
-`~/.config/shello/config.toml` picks the agent and how much output to send.
+`~/.config/shello/config.toml` picks the agent, how much output to send, and
+extra redaction patterns.
 Each agent has two command templates. `{prompt}` is replaced by the prompt.
 If a template has no `{prompt}`, the prompt goes on stdin:
 
@@ -73,18 +79,45 @@ placeholders `{commands}`, `{question}`, `{shell}`, `{cwd}` and `{os}`.
   re-runs the shell inside `script`, which logs everything the terminal shows
   to `~/.local/state/shello/sessions/`.
 - **Command boundaries:** a block at the bottom installs hooks. They mark
-  where each command's output starts and ends, and record the command text
-  and exit code.
-- **Exceptions:** each terminal (including each tmux pane) gets its own
-  recording. Output from full-screen programs like vim and less is left out.
-- **Cleanup:** logs are readable only by you and are deleted after 7 days.
+  where each command's output starts and ends, and record the command text,
+  its directory and its exit code.
+- **One recording per terminal:** each terminal (including each tmux pane)
+  gets its own recording.
+- **What's not recorded:** the Linux console (`TERM=linux`) and `bash -c`-style
+  one-off shells. Output from full-screen programs like vim and less is left
+  out of the prompt.
+- **Login shells** stay login shells inside the recording, so your whole
+  profile runs.
 - **Turning it off:** set `SHELLO_DISABLE=1` before a shell starts to skip
-  recording. bash and zsh commands typed with a leading space (when your
-  history ignores those) are not recorded.
+  recording.
 
-**Privacy:** the output of the commands you include is sent to the agent.
-Nothing is sent unless you run `shello`. Check with `--show` first if the
-output might contain secrets.
+## Privacy and security
+
+- **Nothing is sent unless you run `shello`.** Only the last few commands of
+  the terminal you run it in are sent. `--show` prints exactly what would go.
+- **Secrets are redacted before sending.** These are replaced with
+  `[redacted]` in both the command text and the output:
+  - private-key blocks
+  - common token formats (AWS, GitHub, GitLab, Slack, OpenAI/Anthropic,
+    Stripe, Google, JWTs)
+  - `Authorization:` headers
+  - passwords in URLs
+  - `PASSWORD=`/`token:`/`api_key`-style values
+
+  `shello` tells you on stderr when it redacted something. You can add your
+  own patterns, or turn redaction off, under `[redact]` in `config.toml`.
+  Pattern matching can't catch every secret, so check with `--show` when it
+  matters.
+- **Hidden commands stay hidden.** A command your shell keeps out of history
+  (typed with a leading space, with bash `ignorespace`/`ignoreboth`, zsh
+  `HIST_IGNORE_SPACE`, or in fish) is sent only as "(hidden command)", with
+  no text or output.
+- **The on-disk log is not redacted.** It holds everything the terminal
+  showed, is readable only by you, and is deleted when the terminal closes.
+  Leftovers from crashed or killed terminals are deleted after 7 days.
+- **Interactive mode passes the prompt as a command-line argument.** Other
+  local users can read it from `/proc` while the agent runs. Use `-p`
+  (stdin) on shared machines.
 
 ## Development
 
