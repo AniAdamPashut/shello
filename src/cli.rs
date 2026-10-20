@@ -15,7 +15,7 @@ pub struct Options {
     #[arg(long)]
     pub show: bool,
 
-    /// How many past commands to include [default: 3, from config]
+    /// How many past commands to include [default reads from config]
     #[arg(short = 'n', long, value_name = "N", value_parser = parse_count)]
     pub commands: Option<usize>,
 

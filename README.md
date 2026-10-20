@@ -78,6 +78,12 @@ print       = ["ollama", "run", "llama3"]
 `~/.config/shello/prompt.md` is the prompt template. It supports the
 placeholders `{commands}`, `{question}`, `{shell}`, `{cwd}` and `{os}`.
 
+Under `[capture]` you will find configurations related to the recordings. The number of commands to pass by default, the amount of lines to grab from start and end and the maximum log bytes.
+
+By default, only 1 command enters the context. Can be overriden per run with `-n N` or in configuration for persistency.
+
+Under `[redact]` you will find settings regarding recation of private keys, API tokens, passwords, etc. In `redact.patterns` you can set more regex patterns to redact from.
+
 ## How it works
 
 - **Recording:** the installer adds a block at the top of your rc file that

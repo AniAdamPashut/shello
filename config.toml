@@ -19,7 +19,7 @@ interactive = ["gemini", "-i", "{prompt}"]
 print       = ["gemini", "-p"]
 
 [capture]
-commands = 3            # how many past commands to include
+commands = 1            # how many past commands to include
 head_lines = 100        # keep this many lines from the start of each output
 tail_lines = 100        # ...and this many from the end
 max_log_bytes = 2097152 # only read the last 2 MB of the terminal log
