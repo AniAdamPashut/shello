@@ -25,8 +25,10 @@ if status is-interactive; and not set -q SHELLO_DISABLE; and isatty stdin; and i
             SHELLO_SESSION=$id SHELLO_DIR=$dir SHELLO_PENDING=1 \
                 script -q -e -f -O $dir/$id.log -c "exec fish -i"
             set -l st $status
+            # `exit` in a config file only stops sourcing it, so replace
+            # this shell with one that exits with the recorded shell's status.
             if test -f $dir/$id.started
-                exit $st
+                exec sh -c "exit $st"
             end
             rm -f $dir/$id.log $dir/$id.cmds
             echo "shello: recording failed to start; continuing without it" >&2

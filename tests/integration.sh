@@ -59,6 +59,7 @@ false
 
 shello --show > "$HOME/out.txt" 2>&1
 exit
+touch "$HOME/outer-shell-survived"
 exit
 IN
 run_session "$sh" "$tmp/input"
@@ -82,6 +83,7 @@ for want in '$ echo hello' 'hello' 'exit 1' '$ false' 'q"uo'; do
 $(cat "$out")"
 done
 ! grep -qF 'shello --show' "$out" || fail "[$sh] shello's own invocation leaked into the prompt"
+[ ! -e "$HOME/outer-shell-survived" ] || fail "outer shell kept running after the recorded shell exited"
 started=("$sessions"/*.started)
 [ -f "${started[0]}" ] || fail "[$sh] no .started file"
 perms=$(stat -c %a "${cmds_files[0]}")

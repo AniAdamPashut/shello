@@ -56,16 +56,19 @@ $ shello how do I switch to my headphones?
 
 ### Language and layout
 
-- **Go**, compiled to a single static binary (`CGO_ENABLED=0`), installed to
-  `~/.local/bin/shello`. The user asked for a simple executable.
-- Standard library plus one small TOML library (`github.com/BurntSushi/toml`).
-  No other dependencies.
-- Interactive mode uses `syscall.Exec` so the agent replaces the process.
-- Tests use stdlib `testing`.
+- **Rust** (stable, edition 2021), a single binary built with `cargo build --release`
+  and installed to `~/.local/bin/shello`. The user asked for a simple executable,
+  and later for Rust specifically.
+- Crates: `serde`, `toml`, `serde_json`, `regex`. No CLI framework; the flags are few.
+- Interactive mode uses `std::os::unix::process::CommandExt::exec`, so the agent
+  replaces the process.
+- Code style (user's request): short functions, a blank line after each
+  control-flow block, one responsibility per module.
+- Unit tests live in each module (`#[cfg(test)]`).
 - Repo layout (builder may adjust):
   ```
-  go.mod
-  main.go, ...            # the CLI (package main, split into files as needed)
+  Cargo.toml
+  src/main.rs, src/*.rs   # cli, config, session, extract, clean, prompt, agent, app
   Makefile                # `make` builds ./shello, `make test`
   hooks/shello.bash
   hooks/shello.zsh
@@ -213,8 +216,8 @@ The question is the remaining argv joined with spaces, so quoting isn't needed.
 
 - Checks for util-linux `script`, and fails with a clear
   message otherwise. Uses a `shello` binary if one is next to the script
-  (a prebuilt release), otherwise builds it with `go build` (fails clearly
-  if Go is missing).
+  (a prebuilt release), otherwise builds it with `cargo build --release`
+  (fails clearly if cargo is missing).
 - Copies the `shello` binary to `~/.local/bin/` and the hooks to `~/.local/share/shello/hooks/`.
   Writes the config and prompt if they're missing.
 - Detects the shell from `$SHELL`, or `--shell bash|zsh|fish` to override.
@@ -229,7 +232,7 @@ The question is the remaining argv joined with spaces, so quoting isn't needed.
 
 - Session id format, exact JSON escaping in shell hooks, and how bash gets the
   last history entry robustly.
-- Internal package/file structure of the Go code and the test fixtures. Build a sample
+- Internal module structure of the Rust code and the test fixtures. Build a sample
   `script` log by hand or by recording a real one.
 - Exact wording of the default prompt, within the intent above.
 - Whether `--show` also prints which agent command would run.
