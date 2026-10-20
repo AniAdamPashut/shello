@@ -1,4 +1,6 @@
-use regex::{NoExpand, Regex};
+use regex::{Captures, NoExpand, Regex};
+use std::borrow::Cow;
+use std::ops::Range;
 use std::sync::LazyLock;
 
 pub const ALT_SCREEN_NOTE: &str = "[full-screen program output omitted]";
@@ -22,10 +24,20 @@ static ESCAPES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_]").unwrap()
 });
 
+/// Erase-line sequences (ESC[K, ESC[1K, ESC[2K). They're kept as
+/// placeholder characters until the line is replayed, since what they erase
+/// depends on where the cursor is.
+static ERASE_LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[([012]?)K").unwrap());
+const ERASE_TO_END: char = '\u{E000}';
+const ERASE_TO_START: char = '\u{E001}';
+const ERASE_ALL: char = '\u{E002}';
+const CURSOR_CONTROLS: [char; 5] = ['\r', '\x08', ERASE_TO_END, ERASE_TO_START, ERASE_ALL];
+
 /// Turns raw terminal bytes into the plain text a person would have seen.
 pub fn clean_output(raw: &[u8]) -> String {
     let text = String::from_utf8_lossy(raw);
     let text = ALT_SCREEN.replace_all(&text, NoExpand(ALT_SCREEN_NOTE));
+    let text = mark_erases(&text);
     let text = ESCAPES.replace_all(&text, "").replace("\r\n", "\n");
 
     let lines: Vec<String> = text.split('\n').map(replay_line).collect();
@@ -45,33 +57,61 @@ fn drop_padding(lines: &[String]) -> String {
     text
 }
 
-/// Applies \r (back to column 0) and backspace (one column left) as
-/// overwrites, so progress bars collapse to their final state.
+fn mark_erases(text: &str) -> Cow<'_, str> {
+    let mark = |caps: &Captures| match &caps[1] {
+        "1" => ERASE_TO_START.to_string(),
+        "2" => ERASE_ALL.to_string(),
+        _ => ERASE_TO_END.to_string(),
+    };
+
+    ERASE_LINE.replace_all(text, mark)
+}
+
+/// Redraws a line the way a terminal would, so progress bars collapse to
+/// their final state.
 fn replay_line(line: &str) -> String {
-    if !line.contains(['\r', '\x08']) {
+    if !line.contains(CURSOR_CONTROLS) {
         return line.to_string();
     }
 
-    let mut buf: Vec<char> = Vec::new();
-    let mut col: usize = 0;
-    for c in line.chars() {
+    let mut cursor = Cursor::default();
+    line.chars().for_each(|c| cursor.apply(c));
+
+    cursor.buf.into_iter().collect()
+}
+
+/// One terminal line and the cursor's column on it.
+#[derive(Default)]
+struct Cursor {
+    buf: Vec<char>,
+    col: usize,
+}
+
+impl Cursor {
+    fn apply(&mut self, c: char) {
         match c {
-            '\r' => col = 0,
-            '\x08' => col = col.saturating_sub(1),
-            _ => {
-                overwrite(&mut buf, col, c);
-                col += 1;
-            }
+            '\r' => self.col = 0,
+            '\x08' => self.col = self.col.saturating_sub(1),
+            ERASE_TO_END => self.buf.truncate(self.col),
+            ERASE_TO_START => self.blank(0..(self.col + 1).min(self.buf.len())),
+            ERASE_ALL => self.blank(0..self.buf.len()),
+            _ => self.put(c),
         }
     }
 
-    buf.into_iter().collect()
-}
+    fn blank(&mut self, range: Range<usize>) {
+        self.buf[range].fill(' ');
+    }
 
-fn overwrite(buf: &mut Vec<char>, col: usize, c: char) {
-    match buf.get_mut(col) {
-        Some(slot) => *slot = c,
-        None => buf.push(c),
+    fn put(&mut self, c: char) {
+        if self.col < self.buf.len() {
+            self.buf[self.col] = c;
+        } else {
+            self.buf.resize(self.col, ' ');
+            self.buf.push(c);
+        }
+
+        self.col += 1;
     }
 }
 
@@ -113,6 +153,21 @@ mod tests {
             (b"x\x1b]0;title\x07y", "xy"),
             (b"x\x1b]6973;end;1.1;0\x07y", "xy"),
             (b"\xffok", "\u{FFFD}ok"),
+        ];
+
+        for (input, want) in cases {
+            assert_eq!(clean_output(input), *want, "input {:?}", input);
+        }
+    }
+
+    #[test]
+    fn applies_erase_line() {
+        let cases: &[(&[u8], &str)] = &[
+            (b"Downloading foo 50%\r\x1b[KDone\r\n", "Done\n"),
+            (b"Downloading foo 50%\r\x1b[0KDone\r\n", "Done\n"),
+            (b"abcdef\r\x1b[2Kxy\r\n", "xy\n"),
+            (b"abcdef\x08\x08\x08\x1b[K\r\n", "abc\n"),
+            (b"abcdef\x08\x08\x1b[1KX\r\n", "    Xf\n"),
         ];
 
         for (input, want) in cases {
