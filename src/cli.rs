@@ -1,112 +1,80 @@
-use std::iter::Peekable;
-use std::slice::Iter;
+use clap::Parser;
 
-pub const USAGE: &str = "usage: shello [options] [question...]
-
-Sends your last commands in this terminal, with their output, to an AI agent.
-
-  -p, --print        single answer, then exit (default: conversation)
-  -n, --commands N   how many past commands to include (default 3)
-  -a, --agent NAME   pick a configured agent
-      --show         print the built prompt and exit; call no agent
-  -h, --help         show this help
-";
-
-#[derive(Debug, Clone, Default, PartialEq)]
+/// Ask an AI about what just happened in your terminal.
+///
+/// Sends your last commands in this terminal, with their output and exit
+/// codes, plus your question to an AI agent (claude by default).
+#[derive(Debug, Clone, Default, PartialEq, Parser)]
+#[command(name = "shello", version)]
 pub struct Options {
+    /// Single answer, then exit (default: open a conversation)
+    #[arg(short, long)]
     pub print: bool,
+
+    /// Print the built prompt and exit; call no agent
+    #[arg(long)]
     pub show: bool,
+
+    /// How many past commands to include [default: 3, from config]
+    #[arg(short = 'n', long, value_name = "N", value_parser = parse_count)]
     pub commands: Option<usize>,
+
+    /// Which configured agent to use
+    #[arg(short, long, value_name = "NAME")]
     pub agent: Option<String>,
-    pub question: String,
+
+    /// Your question; no quoting needed. Use -- before one starting with "-"
+    #[arg(value_name = "QUESTION", trailing_var_arg = true)]
+    pub question: Vec<String>,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Parsed {
-    Help,
-    Run(Options),
-}
-
-type Args<'a> = Peekable<Iter<'a, String>>;
-
-/// Parses flags up to the first non-flag (or "--"); the rest is the question,
-/// so it never needs quoting.
-pub fn parse_args(args: &[String]) -> Result<Parsed, String> {
-    let mut opts = Options::default();
-    let mut it = args.iter().peekable();
-    while let Some(arg) = it.next_if(|a| a.starts_with('-')) {
-        if arg == "--" {
-            break;
-        }
-
-        if apply_flag(arg, &mut it, &mut opts)? {
-            return Ok(Parsed::Help);
-        }
-    }
-
-    opts.question = it.cloned().collect::<Vec<_>>().join(" ");
-    Ok(Parsed::Run(opts))
-}
-
-/// Applies one flag to opts; returns true when it asks for help.
-fn apply_flag(arg: &str, it: &mut Args, opts: &mut Options) -> Result<bool, String> {
-    let (flag, inline) = split_inline_value(arg);
-    match flag {
-        "-h" | "--help" => return Ok(true),
-        "-p" | "--print" => opts.print = true,
-        "--show" => opts.show = true,
-        "-n" | "--commands" => opts.commands = Some(parse_count(&value(flag, inline, it)?)?),
-        "-a" | "--agent" => opts.agent = Some(value(flag, inline, it)?),
-        _ => return Err(format!("unknown option {arg}")),
-    }
-
-    Ok(false)
-}
-
-/// Splits "--flag=value" into the flag and its value.
-fn split_inline_value(arg: &str) -> (&str, Option<&str>) {
-    match arg.split_once('=') {
-        Some((flag, value)) if arg.starts_with("--") => (flag, Some(value)),
-        _ => (arg, None),
+impl Options {
+    pub fn question_text(&self) -> String {
+        self.question.join(" ")
     }
 }
 
-fn value(flag: &str, inline: Option<&str>, it: &mut Args) -> Result<String, String> {
-    let value = inline.map(str::to_string).or_else(|| it.next().cloned());
+/// Parses shello's arguments (without the program name).
+pub fn parse_args(args: &[String]) -> Result<Options, clap::Error> {
+    let argv = std::iter::once("shello").chain(args.iter().map(String::as_str));
 
-    value.ok_or_else(|| format!("{flag} needs a value"))
+    Options::try_parse_from(argv)
 }
 
 fn parse_count(s: &str) -> Result<usize, String> {
     let n = s.parse::<usize>().ok().filter(|n| *n > 0);
 
-    n.ok_or_else(|| format!("invalid number of commands: {s}"))
+    n.ok_or_else(|| format!("expected a whole number of at least 1, got '{s}'"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn parse(args: &[&str]) -> Result<Parsed, String> {
+    use clap::error::ErrorKind;
+
+    fn parse(args: &[&str]) -> Result<Options, clap::Error> {
         parse_args(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>())
     }
 
     fn opts(args: &[&str]) -> Options {
-        match parse(args) {
-            Ok(Parsed::Run(o)) => o,
-            other => panic!("parse({args:?}) = {other:?}"),
-        }
+        parse(args).unwrap_or_else(|e| panic!("parse({args:?}) failed: {e}"))
+    }
+
+    fn words(s: &str) -> Vec<String> {
+        s.split_whitespace().map(String::from).collect()
     }
 
     #[test]
     fn parses_flags_and_question() {
         let q = |s: &str| s.to_string();
+        let w = words;
         let cases: &[(&[&str], Options)] = &[
             (
                 &["-p", "how", "do", "I"],
                 Options {
                     print: true,
-                    question: q("how do I"),
+                    question: w("how do I"),
                     ..Default::default()
                 },
             ),
@@ -114,7 +82,7 @@ mod tests {
                 &["--print", "x"],
                 Options {
                     print: true,
-                    question: q("x"),
+                    question: w("x"),
                     ..Default::default()
                 },
             ),
@@ -130,7 +98,7 @@ mod tests {
                 &["--commands=2", "q"],
                 Options {
                     commands: Some(2),
-                    question: q("q"),
+                    question: w("q"),
                     ..Default::default()
                 },
             ),
@@ -138,7 +106,7 @@ mod tests {
                 &["--agent", "codex", "q"],
                 Options {
                     agent: Some(q("codex")),
-                    question: q("q"),
+                    question: w("q"),
                     ..Default::default()
                 },
             ),
@@ -153,14 +121,14 @@ mod tests {
             (
                 &["why", "-p"],
                 Options {
-                    question: q("why -p"),
+                    question: w("why -p"),
                     ..Default::default()
                 },
             ),
             (
                 &["--", "-p", "is", "a", "flag?"],
                 Options {
-                    question: q("-p is a flag?"),
+                    question: w("-p is a flag?"),
                     ..Default::default()
                 },
             ),
@@ -173,14 +141,21 @@ mod tests {
 
     #[test]
     fn help_flag() {
-        assert_eq!(parse(&["--help"]), Ok(Parsed::Help));
-        assert_eq!(parse(&["-h"]), Ok(Parsed::Help));
+        for flag in ["--help", "-h"] {
+            assert_eq!(parse(&[flag]).unwrap_err().kind(), ErrorKind::DisplayHelp);
+        }
+    }
+
+    #[test]
+    fn joins_question_words() {
+        assert_eq!(opts(&["how", "do", "I"]).question_text(), "how do I");
     }
 
     #[test]
     fn rejects_bad_input() {
         for args in [&["-n", "0"][..], &["-n", "x"], &["-n"], &["--bogus"]] {
-            assert!(parse(args).is_err(), "args {args:?}");
+            let err = parse(args).expect_err(&format!("args {args:?}"));
+            assert_ne!(err.kind(), ErrorKind::DisplayHelp);
         }
     }
 }

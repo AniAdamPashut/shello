@@ -1,6 +1,6 @@
 use crate::agent;
 use crate::clean::Trim;
-use crate::cli::{self, Options, Parsed};
+use crate::cli::{self, Options};
 use crate::config::{self, AgentConfig, Config};
 use crate::extract::{self, Command};
 use crate::paths::config_dir;
@@ -30,14 +30,11 @@ fn failed(message: String) -> Failure {
 
 pub fn run(args: &[String]) -> i32 {
     match cli::parse_args(args) {
-        Ok(Parsed::Help) => {
-            print!("{}", cli::USAGE);
-            0
-        }
-        Ok(Parsed::Run(opts)) => finish(execute(&opts)),
+        Ok(opts) => finish(execute(&opts)),
         Err(e) => {
-            eprint!("shello: {e}\n\n{}", cli::USAGE);
-            2
+            // clap prints help/version to stdout (exit 0) and errors to stderr (exit 2).
+            let _ = e.print();
+            e.exit_code()
         }
     }
 }
@@ -75,7 +72,7 @@ fn build_prompt(opts: &Options, cfg: &Config) -> Result<String, Failure> {
     Ok(prompt::build_prompt(
         &tmpl,
         &cmds,
-        &opts.question,
+        &opts.question_text(),
         &prompt::detect_env(),
     ))
 }
