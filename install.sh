@@ -93,7 +93,7 @@ install_binary() {
 
 install_hooks() {
 	mkdir -p "$HOOKS_DIR"
-	for f in wrap.sh shello.bash shello.zsh shello.fish; do
+	for f in wrap.sh sweep.sh shello.bash shello.zsh shello.fish; do
 		cp "$REPO/hooks/$f" "$HOOKS_DIR/$f"
 		chmod 644 "$HOOKS_DIR/$f"
 	done

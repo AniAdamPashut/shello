@@ -28,10 +28,21 @@ pub fn clean_output(raw: &[u8]) -> String {
     let text = ALT_SCREEN.replace_all(&text, NoExpand(ALT_SCREEN_NOTE));
     let text = ESCAPES.replace_all(&text, "").replace("\r\n", "\n");
 
-    text.split('\n')
-        .map(replay_line)
-        .collect::<Vec<_>>()
-        .join("\n")
+    let lines: Vec<String> = text.split('\n').map(replay_line).collect();
+
+    drop_padding(&lines)
+}
+
+/// Removes the trailing spaces terminals pad lines with, and blank lines at
+/// the end (zsh's partial-line marker leaves one after every command).
+fn drop_padding(lines: &[String]) -> String {
+    let trimmed: Vec<&str> = lines.iter().map(|l| l.trim_end()).collect();
+    let mut text = trimmed.join("\n");
+    while text.ends_with("\n\n") {
+        text.pop();
+    }
+
+    text
 }
 
 /// Applies \r (back to column 0) and backspace (one column left) as
@@ -107,6 +118,14 @@ mod tests {
         for (input, want) in cases {
             assert_eq!(clean_output(input), *want, "input {:?}", input);
         }
+    }
+
+    #[test]
+    fn drops_trailing_padding() {
+        let zsh_prompt_sp = b"first-run\r\n\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m        \r \r";
+
+        assert_eq!(clean_output(zsh_prompt_sp), "first-run\n");
+        assert_eq!(clean_output(b"a  \r\nb\r\n\r\n\r\n"), "a\nb\n");
     }
 
     #[test]

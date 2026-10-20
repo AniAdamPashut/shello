@@ -30,9 +30,14 @@ pub fn format_commands(cmds: &[Command]) -> String {
 fn format_command(c: &Command) -> String {
     let needs_newline = !c.output.is_empty() && !c.output.ends_with('\n');
     let newline = if needs_newline { "\n" } else { "" };
+    let cwd = if c.cwd.is_empty() {
+        String::new()
+    } else {
+        format!("cwd: {}\n", c.cwd)
+    };
 
     format!(
-        "$ {}\nexit {}\n```\n{}{newline}```\n",
+        "$ {}\n{cwd}exit {}\n```\n{}{newline}```\n",
         c.cmd, c.exit, c.output
     )
 }
@@ -117,6 +122,7 @@ mod tests {
             exit,
             output: output.into(),
             available: true,
+            ..Default::default()
         }
     }
 

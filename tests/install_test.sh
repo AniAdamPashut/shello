@@ -23,7 +23,7 @@ SHELL=/bin/bash "$repo/install.sh" > "$tmp/install.log" 2>&1 || fail "install fa
 SHELL=/bin/bash "$repo/install.sh" > "$tmp/install.log" 2>&1 || fail "reinstall failed: $(cat "$tmp/install.log")"
 
 [ -x "$HOME/.local/bin/shello" ] || fail "binary not installed"
-for f in wrap.sh shello.bash shello.zsh shello.fish; do
+for f in wrap.sh sweep.sh shello.bash shello.zsh shello.fish; do
 	[ -f "$HOME/.local/share/shello/hooks/$f" ] || fail "hook $f not installed"
 done
 [ -f "$HOME/.config/shello/config.toml" ] || fail "config not installed"

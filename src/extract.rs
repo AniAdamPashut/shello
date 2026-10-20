@@ -3,6 +3,8 @@ use crate::session::CmdRecord;
 use std::path::Path;
 
 pub const UNAVAILABLE: &str = "[output not available]";
+pub const HIDDEN_CMD: &str = "(hidden command)";
+pub const HIDDEN_NOTE: &str = "[not shared: this command was kept out of shell history]";
 const START_MARKER: &str = "\x1b]6973;start;";
 const END_MARKER: &str = "\x1b]6973;end;";
 
@@ -10,6 +12,7 @@ const END_MARKER: &str = "\x1b]6973;end;";
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Command {
     pub cmd: String,
+    pub cwd: String,
     pub exit: i32,
     pub output: String,
     pub available: bool,
@@ -55,13 +58,30 @@ pub fn last_commands(recs: &[CmdRecord], log: &[u8], n: usize, trim: Trim) -> Ve
 }
 
 fn to_command(rec: &CmdRecord, log: &[u8], trim: Trim) -> Command {
+    if rec.hidden {
+        return hidden_command(rec);
+    }
+
     let output = extract_output(log, &rec.seq).map(|raw| truncate(&clean_output(raw), trim));
 
     Command {
         cmd: rec.cmd.clone(),
+        cwd: rec.cwd.clone(),
         exit: rec.exit,
         available: output.is_some(),
         output: output.unwrap_or_else(|| UNAVAILABLE.to_string()),
+    }
+}
+
+/// Keeps the fact that something ran (so older output isn't mistaken for
+/// the latest) without revealing what it was or printed.
+fn hidden_command(rec: &CmdRecord) -> Command {
+    Command {
+        cmd: HIDDEN_CMD.to_string(),
+        cwd: rec.cwd.clone(),
+        exit: rec.exit,
+        output: HIDDEN_NOTE.to_string(),
+        available: false,
     }
 }
 
@@ -89,6 +109,33 @@ mod tests {
             ..Default::default()
         };
         cmds.iter().enumerate().map(to_rec).collect()
+    }
+
+    #[test]
+    fn carries_cwd() {
+        let r = [CmdRecord {
+            seq: "1.1".into(),
+            cmd: "ls".into(),
+            cwd: "/tmp".into(),
+            ..Default::default()
+        }];
+
+        assert_eq!(last_commands(&r, b"", 3, TRIM)[0].cwd, "/tmp");
+    }
+
+    #[test]
+    fn hides_hidden_commands_output() {
+        let r = [CmdRecord {
+            seq: "1.1".into(),
+            hidden: true,
+            ..Default::default()
+        }];
+        let log = format!("{}secret{}", start("1.1"), end("1.1", 0));
+        let got = &last_commands(&r, log.as_bytes(), 3, TRIM)[0];
+
+        assert_eq!(got.cmd, HIDDEN_CMD);
+        assert_eq!(got.output, HIDDEN_NOTE);
+        assert!(!got.available);
     }
 
     #[test]
@@ -159,7 +206,7 @@ mod tests {
             seq: "1.5".into(),
             cmd: "sleep 5".into(),
             exit: 130,
-            ts: 0,
+            ..Default::default()
         }];
         let log = format!("{}{}", start("1.5"), end("1.5", 130));
         let got = last_commands(&r, log.as_bytes(), 3, TRIM);

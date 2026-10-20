@@ -12,7 +12,14 @@ pub const NOT_RECORDING: &str =
 pub struct CmdRecord {
     pub seq: String,
     pub cmd: String,
+    /// The directory the command was typed in.
+    #[serde(default)]
+    pub cwd: String,
     pub exit: i32,
+    /// The command was kept out of shell history (e.g. a leading space), so
+    /// neither its text nor its output is shared.
+    #[serde(default)]
+    pub hidden: bool,
     #[serde(default)]
     pub ts: i64,
 }
@@ -156,14 +163,18 @@ mod tests {
         let data = concat!(
             r#"{"seq":"1.1","cmd":"ls","exit":0,"ts":1}"#,
             "\ngarbage\n",
-            r#"{"seq":"1.2","cmd":"q\"x","exit":2,"ts":2}"#,
+            r#"{"seq":"1.2","cmd":"q\"x","cwd":"/tmp","exit":2,"hidden":true,"ts":2}"#,
             "\n"
         );
         let recs = read_cmds(&temp_file("s.cmds", data.as_bytes())).unwrap();
 
         assert_eq!(recs.len(), 2);
+        assert_eq!(recs[0].cwd, "");
+        assert!(!recs[0].hidden);
         assert_eq!(recs[1].cmd, r#"q"x"#);
         assert_eq!(recs[1].exit, 2);
+        assert_eq!(recs[1].cwd, "/tmp");
+        assert!(recs[1].hidden);
     }
 
     #[test]
