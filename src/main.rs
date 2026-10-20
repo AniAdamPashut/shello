@@ -8,6 +8,7 @@ mod paths;
 mod prompt;
 mod redact;
 mod session;
+mod spinner;
 #[cfg(test)]
 mod test_util;
 

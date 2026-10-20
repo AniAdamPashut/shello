@@ -221,6 +221,29 @@ IN
 	echo "ok: [$sh] secrets redacted before sending"
 }
 
+test_print_spinner() {
+	setup_home "$sh"
+	mkdir -p "$HOME/.config/shello"
+	cat > "$HOME/.config/shello/config.toml" <<'TOML'
+[agents.slow]
+interactive = ["true", "{prompt}"]
+print = ["sh", "-c", "cat > /dev/null; sleep 1; echo ANSWER-$((40 + 2))"]
+TOML
+	cat > "$tmp/input" <<'IN'
+echo hi
+shello -p -e -a slow
+shello -p -e -a slow 2> "$HOME/err.txt"
+exit
+exit
+IN
+	run_session "$sh -i" "$tmp/input"
+
+	expect_in "Waiting for slow" "$tmp/terminal.txt"
+	expect_in "$(printf '\r\033[2KANSWER-42')" "$tmp/terminal.txt"
+	expect_not_in "Waiting" "$HOME/err.txt"
+	echo "ok: [$sh] -p shows a spinner until the answer starts"
+}
+
 test_repeated_command() {
 	setup_home "$sh"
 	cat > "$tmp/input" <<'IN'
@@ -342,6 +365,7 @@ for sh in ${SHELLS:-bash zsh fish}; do
 	run test_login_shell
 	run test_redaction
 	[ "$sh" != bash ] || run test_repeated_command
+	[ "$sh" != bash ] || run test_print_spinner
 done
 
 sh=bash

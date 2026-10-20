@@ -45,7 +45,8 @@ shello [OPTIONS] [QUESTION]...
 
 - `shello why did that fail?` opens a conversation in the agent's own tool,
   with the prompt as the first message.
-- `shello -p what does this error mean` prints one answer and returns.
+- `shello -p what does this error mean` prints one answer and returns. While
+  it waits, a spinner shows on stderr (only when stderr is a terminal).
 - `shello -e` sends just the commands; the agent explains what happened and
   whether anything went wrong.
 - `shello` on its own prints this help.

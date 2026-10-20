@@ -1,6 +1,7 @@
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
 
 const MAX_INTERACTIVE_PROMPT: usize = 120_000;
 const PLACEHOLDER: &str = "{prompt}";
@@ -17,43 +18,85 @@ pub fn build_argv(tmpl: &[String], prompt: &str) -> (Vec<String>, bool) {
     (argv, use_stdin)
 }
 
-/// Runs the agent once and returns its exit code (127 if it couldn't start).
-pub fn run_print(argv: &[String], prompt: &str, use_stdin: bool, stdout: Stdio) -> i32 {
-    match spawn_and_wait(argv, prompt, use_stdin, stdout) {
+/// Where a print-mode run's output goes. on_output runs before each chunk
+/// is written, so a spinner can clear its line first.
+pub struct Sinks<'a> {
+    pub stdout: &'a mut (dyn Write + Send),
+    pub stderr: &'a mut (dyn Write + Send),
+    pub on_output: &'a (dyn Fn() + Sync),
+}
+
+/// Runs the agent once, relaying its output, and returns its exit code
+/// (127 if it couldn't start).
+pub fn run_print(argv: &[String], prompt: &str, use_stdin: bool, mut sinks: Sinks) -> i32 {
+    match spawn_and_relay(argv, prompt, use_stdin, &mut sinks) {
         Ok(status) => exit_code(status),
         Err(e) => {
-            eprintln!("shello: {}: {e}", argv[0]);
+            (sinks.on_output)();
+            let _ = writeln!(sinks.stderr, "shello: {}: {e}", argv[0]);
             127
         }
     }
 }
 
-fn spawn_and_wait(
+fn spawn_and_relay(
     argv: &[String],
     prompt: &str,
     use_stdin: bool,
-    stdout: Stdio,
+    sinks: &mut Sinks,
 ) -> io::Result<ExitStatus> {
+    let mut child = spawn(argv, use_stdin)?;
+    feed_stdin(&mut child, prompt);
+
+    let agent_out = child.stdout.take().expect("stdout is piped");
+    let agent_err = child.stderr.take().expect("stderr is piped");
+    let on_output = sinks.on_output;
+    let (out, err) = (&mut *sinks.stdout, &mut *sinks.stderr);
+    thread::scope(|scope| {
+        scope.spawn(move || relay(agent_err, err, on_output));
+        let _ = relay(agent_out, out, on_output);
+    });
+
+    child.wait()
+}
+
+fn spawn(argv: &[String], use_stdin: bool) -> io::Result<Child> {
     let stdin = if use_stdin {
         Stdio::piped()
     } else {
         Stdio::inherit()
     };
 
-    let mut child = Command::new(&argv[0])
+    Command::new(&argv[0])
         .args(&argv[1..])
         .stdin(stdin)
-        .stdout(stdout)
-        .spawn()?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+}
 
-    // Write from a thread so a large prompt can't deadlock against the
-    // agent's output; dropping the pipe sends EOF.
+/// Writes the prompt from a thread so a large prompt can't deadlock against
+/// the agent's output; dropping the pipe sends EOF.
+fn feed_stdin(child: &mut Child, prompt: &str) {
     if let Some(mut pipe) = child.stdin.take() {
         let prompt = prompt.to_owned();
-        std::thread::spawn(move || pipe.write_all(prompt.as_bytes()));
+        thread::spawn(move || pipe.write_all(prompt.as_bytes()));
     }
+}
 
-    child.wait()
+/// Copies from the agent to a sink as output arrives.
+fn relay(mut from: impl Read, to: &mut dyn Write, on_output: &dyn Fn()) -> io::Result<()> {
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = from.read(&mut buf)?;
+        if n == 0 {
+            return Ok(());
+        }
+
+        on_output();
+        to.write_all(&buf[..n])?;
+        to.flush()?;
+    }
 }
 
 /// The exit code, or 128 + signal number like a shell reports it.
@@ -76,23 +119,58 @@ pub fn too_large_for_interactive(prompt: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::temp_dir;
-    use std::fs::File;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn strings(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
     }
 
-    /// Runs run_print with stdout sent to a file, returning (exit code, output).
+    struct Captured {
+        code: i32,
+        stdout: String,
+        stderr: String,
+        output_calls: usize,
+    }
+
+    /// Runs run_print with both streams captured.
+    fn capture(argv: &[&str], prompt: &str, use_stdin: bool) -> Captured {
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let calls = AtomicUsize::new(0);
+        let on_output = || {
+            calls.fetch_add(1, Ordering::SeqCst);
+        };
+        let sinks = Sinks {
+            stdout: &mut stdout,
+            stderr: &mut stderr,
+            on_output: &on_output,
+        };
+        let code = run_print(&strings(argv), prompt, use_stdin, sinks);
+
+        Captured {
+            code,
+            stdout: String::from_utf8(stdout).unwrap(),
+            stderr: String::from_utf8(stderr).unwrap(),
+            output_calls: calls.load(Ordering::SeqCst),
+        }
+    }
+
     fn run_captured(argv: &[&str], prompt: &str, use_stdin: bool) -> (i32, String) {
-        let path = temp_dir().join("out");
-        let code = run_print(
-            &strings(argv),
-            prompt,
-            use_stdin,
-            File::create(&path).unwrap().into(),
-        );
-        (code, std::fs::read_to_string(&path).unwrap())
+        let c = capture(argv, prompt, use_stdin);
+        (c.code, c.stdout)
+    }
+
+    #[test]
+    fn reports_when_output_starts() {
+        assert!(capture(&["cat"], "hello", true).output_calls > 0);
+        assert_eq!(capture(&["true"], "", true).output_calls, 0);
+    }
+
+    #[test]
+    fn forwards_agent_stderr() {
+        let c = capture(&["sh", "-c", "echo oops >&2; exit 4"], "", true);
+
+        assert_eq!((c.code, c.stderr.as_str()), (4, "oops\n"));
+        assert!(c.output_calls > 0);
     }
 
     #[test]

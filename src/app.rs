@@ -7,7 +7,8 @@ use crate::paths::config_dir;
 use crate::prompt;
 use crate::redact::{self, Redactor};
 use crate::session::{self, SessionEnv};
-use std::process::Stdio;
+use crate::spinner::Spinner;
+use std::io::{self, IsTerminal};
 
 /// What ends a run early: a message for stderr and the exit code.
 struct Failure {
@@ -141,8 +142,31 @@ fn mode_template(agent: &AgentConfig, print: bool) -> &[String] {
 fn run_print(name: &str, agent: &AgentConfig, prompt: &str) -> Result<i32, Failure> {
     let tmpl = require_template(name, &agent.print)?;
     let (argv, use_stdin) = agent::build_argv(tmpl, prompt);
+    let spinner = start_spinner(name);
+    let stop_spinner = || {
+        if let Some(spinner) = &spinner {
+            spinner.stop();
+        }
+    };
 
-    Ok(agent::run_print(&argv, prompt, use_stdin, Stdio::inherit()))
+    let sinks = agent::Sinks {
+        stdout: &mut io::stdout(),
+        stderr: &mut io::stderr(),
+        on_output: &stop_spinner,
+    };
+    let code = agent::run_print(&argv, prompt, use_stdin, sinks);
+    stop_spinner();
+
+    Ok(code)
+}
+
+/// The waiting animation, shown only when stderr is a terminal.
+fn start_spinner(name: &str) -> Option<Spinner> {
+    let message = format!("Waiting for {name}");
+
+    io::stderr()
+        .is_terminal()
+        .then(|| Spinner::start(Box::new(io::stderr()), &message))
 }
 
 fn run_interactive(name: &str, agent: &AgentConfig, prompt: &str) -> Result<i32, Failure> {
