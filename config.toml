@@ -1,0 +1,25 @@
+# Which agent to use by default (one of the [agents.*] tables below).
+agent = "claude"
+
+# Each agent has two argv templates (no shell involved):
+#   interactive: starts the agent's own conversation UI; {prompt} is replaced
+#                by the built prompt.
+#   print:       single answer; if no {prompt} placeholder appears, the
+#                prompt is sent on stdin.
+[agents.claude]
+interactive = ["claude", "{prompt}"]
+print       = ["claude", "-p"]
+
+[agents.codex]
+interactive = ["codex", "{prompt}"]
+print       = ["codex", "exec", "-"]
+
+[agents.gemini]
+interactive = ["gemini", "-i", "{prompt}"]
+print       = ["gemini", "-p"]
+
+[capture]
+commands = 3            # how many past commands to include
+head_lines = 100        # keep this many lines from the start of each output
+tail_lines = 100        # ...and this many from the end
+max_log_bytes = 2097152 # only read the last 2 MB of the terminal log
