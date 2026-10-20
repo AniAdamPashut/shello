@@ -24,11 +24,20 @@ pub struct CaptureConfig {
     pub max_log_bytes: u64,
 }
 
+/// Secrets are scrubbed from the prompt before it's sent; see redact.rs.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RedactConfig {
+    pub enabled: bool,
+    /// Extra regexes; each match is replaced whole.
+    pub patterns: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub agent: String,
     pub agents: HashMap<String, AgentConfig>,
     pub capture: CaptureConfig,
+    pub redact: RedactConfig,
 }
 
 /// Loads the built-in config with the user's file at path laid over it.
@@ -88,6 +97,20 @@ mod tests {
         assert_eq!(cfg.agents["claude"].print, ["claude", "-p"]);
         assert_eq!(cfg.capture.commands, 3);
         assert_eq!(cfg.capture.max_log_bytes, 2_097_152);
+        assert!(cfg.redact.enabled);
+        assert!(cfg.redact.patterns.is_empty());
+    }
+
+    #[test]
+    fn redaction_can_be_configured() {
+        let path = temp_file(
+            "config.toml",
+            b"[redact]\nenabled = false\npatterns = ['x+']\n",
+        );
+        let cfg = load_config(&path).unwrap();
+
+        assert!(!cfg.redact.enabled);
+        assert_eq!(cfg.redact.patterns, ["x+"]);
     }
 
     #[test]

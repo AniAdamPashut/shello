@@ -205,6 +205,22 @@ IN
 	echo "ok: [$sh] still recording after re-sourcing the rc"
 }
 
+test_redaction() {
+	setup_home "$sh"
+	cat > "$tmp/input" <<'IN'
+echo 'DB_PASSWORD=hunter2'
+shello --show -n 1 > "$HOME/out.txt" 2> "$HOME/err.txt"
+exit
+exit
+IN
+	run_session "$sh -i" "$tmp/input"
+
+	expect_not_in hunter2 "$HOME/out.txt"
+	expect_in "$ echo 'DB_PASSWORD=[redacted]'" "$HOME/out.txt"
+	expect_in "redacted 2 secrets" "$HOME/err.txt"
+	echo "ok: [$sh] secrets redacted before sending"
+}
+
 test_repeated_command() {
 	setup_home "$sh"
 	cat > "$tmp/input" <<'IN'
@@ -324,6 +340,7 @@ for sh in ${SHELLS:-bash zsh fish}; do
 	run test_resource_rc
 	run test_command_string
 	run test_login_shell
+	run test_redaction
 	[ "$sh" != bash ] || run test_repeated_command
 done
 

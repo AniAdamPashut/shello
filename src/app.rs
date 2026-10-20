@@ -5,6 +5,7 @@ use crate::config::{self, AgentConfig, Config};
 use crate::extract::{self, Command};
 use crate::paths::config_dir;
 use crate::prompt;
+use crate::redact::{self, Redactor};
 use crate::session::{self, SessionEnv};
 use std::process::Stdio;
 
@@ -89,7 +90,26 @@ fn recent_commands(opts: &Options, cfg: &Config) -> Result<Vec<Command>, Failure
         tail: cfg.capture.tail_lines,
     };
 
-    Ok(extract::last_commands(&recs, &log, n, trim))
+    let mut cmds = extract::last_commands(&recs, &log, n, trim);
+    redact_secrets(&mut cmds, cfg)?;
+
+    Ok(cmds)
+}
+
+/// Scrubs secrets from the commands and says how many were removed.
+fn redact_secrets(cmds: &mut [Command], cfg: &Config) -> Result<(), Failure> {
+    if !cfg.redact.enabled {
+        return Ok(());
+    }
+
+    let redactor = Redactor::new(&cfg.redact.patterns).map_err(failed)?;
+    let count = redact::redact_commands(cmds, &redactor);
+    if count > 0 {
+        let noun = if count == 1 { "secret" } else { "secrets" };
+        eprintln!("shello: redacted {count} {noun} before sending (see --show)");
+    }
+
+    Ok(())
 }
 
 fn current_tty() -> String {

@@ -23,3 +23,10 @@ commands = 3            # how many past commands to include
 head_lines = 100        # keep this many lines from the start of each output
 tail_lines = 100        # ...and this many from the end
 max_log_bytes = 2097152 # only read the last 2 MB of the terminal log
+
+# Secrets (private keys, API tokens, passwords in URLs, PASSWORD=... and the
+# like) are replaced with [redacted] before anything is sent. Your terminal
+# log itself is not changed.
+[redact]
+enabled = true
+patterns = []           # extra regexes to redact, e.g. ['corp-[0-9a-f]{32}']

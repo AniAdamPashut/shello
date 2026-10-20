@@ -6,6 +6,7 @@ mod config;
 mod extract;
 mod paths;
 mod prompt;
+mod redact;
 mod session;
 #[cfg(test)]
 mod test_util;
