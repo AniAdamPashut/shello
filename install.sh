@@ -13,6 +13,7 @@ HOOKS_DIR="$SHARE_DIR/hooks"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shello"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/shello"
 FISH_HOOK="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/shello.fish"
+NEWLINE_NOTE="# (shello added a newline at the end of the line above)"
 
 die() {
 	echo "install.sh: $*" >&2
@@ -124,10 +125,17 @@ add_rc_blocks() {
 	touch "$rc"
 	remove_rc_blocks "$rc"
 
+	# A last line without a newline would merge with the hooks marker.
+	newline=no
+	if [ -s "$rc" ] && [ -n "$(tail -c1 "$rc")" ]; then
+		newline=yes
+	fi
+
 	{
 		wrap_block "$sh_name"
 		cat "$rc"
-		hooks_block "$sh_name"
+		[ "$newline" = no ] || echo
+		hooks_block "$sh_name" "$newline"
 	} > "$rc.shello-tmp"
 
 	replace_file "$rc" "$rc.shello-tmp"
@@ -139,8 +147,11 @@ wrap_block() {
 	echo "# <<< shello wrap <<<"
 }
 
+# hooks_block SHELL ADDED_NEWLINE: the block notes when install.sh had to end
+# the user's last line, so uninstall can take that newline back out.
 hooks_block() {
 	echo "# >>> shello hooks >>>"
+	[ "$2" = no ] || echo "$NEWLINE_NOTE"
 	echo "[ -f \"\$HOME/.local/share/shello/hooks/shello.$1\" ] && . \"\$HOME/.local/share/shello/hooks/shello.$1\""
 	echo "# <<< shello hooks <<<"
 }
@@ -171,9 +182,17 @@ uninstall() {
 }
 
 remove_rc_blocks() {
+	added_newline=no
+	grep -qxF "$NEWLINE_NOTE" "$1" && added_newline=yes
 	sed -e '/^# >>> shello wrap >>>$/,/^# <<< shello wrap <<<$/d' \
 		-e '/^# >>> shello hooks >>>$/,/^# <<< shello hooks <<<$/d' \
 		"$1" > "$1.shello-tmp"
+
+	# $(...) drops the trailing newline install.sh added.
+	if [ "$added_newline" = yes ]; then
+		content=$(cat "$1.shello-tmp")
+		printf '%s' "$content" > "$1.shello-tmp"
+	fi
 
 	replace_file "$1" "$1.shello-tmp"
 }

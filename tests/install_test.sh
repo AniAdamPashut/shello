@@ -58,6 +58,16 @@ echo "ok: uninstall restores rc and keeps config"
 [ ! -e "$HOME/.local/state/shello" ] || fail "logs left after purge"
 echo "ok: purge removes config and logs"
 
+# --- rc file without a final newline -------------------------------------------
+printf "alias ll='ls -l'" > "$HOME/.bashrc"
+cp "$HOME/.bashrc" "$tmp/bashrc.nonl"
+SHELL=/bin/bash "$repo/install.sh" > /dev/null 2>&1 || fail "install failed"
+bash -n "$HOME/.bashrc" || fail "installed rc has a syntax error: $(cat "$HOME/.bashrc")"
+grep -qxF "alias ll='ls -l'" "$HOME/.bashrc" || fail "last line was merged with a marker: $(cat "$HOME/.bashrc")"
+"$repo/install.sh" --uninstall > /dev/null 2>&1
+cmp -s "$HOME/.bashrc" "$tmp/bashrc.nonl" || fail "rc without final newline not restored: $(od -c "$HOME/.bashrc" | tail -3)"
+echo "ok: rc without a final newline"
+
 # --- fish and errors -----------------------------------------------------------
 "$repo/install.sh" --shell fish > /dev/null 2>&1 || fail "fish install failed"
 [ -f "$HOME/.config/fish/conf.d/shello.fish" ] || fail "fish conf.d hook not installed"
