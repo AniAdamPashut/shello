@@ -1,4 +1,4 @@
-.PHONY: build test integration integration-docker
+.PHONY: build test integration integration-docker scenarios
 
 build:
 	cargo build --release
@@ -16,3 +16,8 @@ integration: build
 integration-docker: build
 	docker run --rm --network host -v "$(CURDIR)":/w:ro archlinux:latest sh -c \
 		'pacman -Sy --noconfirm --needed zsh fish python >/dev/null 2>&1 && cp -r /w /r && cd /r && SHELLS="bash zsh fish" bash tests/integration.sh'
+
+# Runs each scenarios/*/run.sh in a recorded shell and asks the real agent.
+# Limit it with e.g. `make scenarios S=fastfetch_os`.
+scenarios: build
+	bash scenarios/run_all.sh $(S)
