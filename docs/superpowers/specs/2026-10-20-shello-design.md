@@ -56,12 +56,17 @@ $ shello how do I switch to my headphones?
 
 ### Language and layout
 
-- **Python 3.11+, standard library only** (uses `tomllib`). Single executable
-  file `shello` with a shebang, installed to `~/.local/bin/shello`.
-- Tests use stdlib `unittest`.
+- **Go**, compiled to a single static binary (`CGO_ENABLED=0`), installed to
+  `~/.local/bin/shello`. The user asked for a simple executable.
+- Standard library plus one small TOML library (`github.com/BurntSushi/toml`).
+  No other dependencies.
+- Interactive mode uses `syscall.Exec` so the agent replaces the process.
+- Tests use stdlib `testing`.
 - Repo layout (builder may adjust):
   ```
-  shello                  # the CLI
+  go.mod
+  main.go, ...            # the CLI (package main, split into files as needed)
+  Makefile                # `make` builds ./shello, `make test`
   hooks/shello.bash
   hooks/shello.zsh
   hooks/shello.fish
@@ -206,9 +211,11 @@ The question is the remaining argv joined with spaces, so quoting isn't needed.
 
 ### Installer (`install.sh`, POSIX sh)
 
-- Checks for `python3` ≥ 3.11 and util-linux `script`, and fails with a clear
-  message otherwise.
-- Copies `shello` to `~/.local/bin/` and the hooks to `~/.local/share/shello/hooks/`.
+- Checks for util-linux `script`, and fails with a clear
+  message otherwise. Uses a `shello` binary if one is next to the script
+  (a prebuilt release), otherwise builds it with `go build` (fails clearly
+  if Go is missing).
+- Copies the `shello` binary to `~/.local/bin/` and the hooks to `~/.local/share/shello/hooks/`.
   Writes the config and prompt if they're missing.
 - Detects the shell from `$SHELL`, or `--shell bash|zsh|fish` to override.
   Adds the two marked blocks (wrapper at top, hooks at bottom; see Capture) to the right rc file
@@ -222,7 +229,7 @@ The question is the remaining argv joined with spaces, so quoting isn't needed.
 
 - Session id format, exact JSON escaping in shell hooks, and how bash gets the
   last history entry robustly.
-- Internal structure of the Python file and the test fixtures. Build a sample
+- Internal package/file structure of the Go code and the test fixtures. Build a sample
   `script` log by hand or by recording a real one.
 - Exact wording of the default prompt, within the intent above.
 - Whether `--show` also prints which agent command would run.
