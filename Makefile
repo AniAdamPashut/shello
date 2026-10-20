@@ -8,6 +8,7 @@ test:
 	cargo test
 
 integration: build
+	bash tests/install_test.sh
 	bash tests/integration.sh
 
 # Runs the integration test for bash, zsh and fish in an Arch Linux container
