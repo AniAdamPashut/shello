@@ -136,7 +136,7 @@ false
 
 cp "$SHELLO_DIR/$SHELLO_SESSION.cmds" "$HOME/cmds.copy"
 stat -c %a "$SHELLO_DIR/$SHELLO_SESSION.cmds" > "$HOME/perms"
-shello --show -n 7 > "$HOME/out.txt" 2>&1
+shello --show -e -n 7 > "$HOME/out.txt" 2>&1
 exit
 touch "$HOME/outer-shell-survived"
 exit
@@ -175,7 +175,7 @@ echo first-run
 exec $sh
 @pause $pause
 echo after-exec
-shello --show -n 2 > "\$HOME/out.txt" 2>&1
+shello --show -e -n 2 > "\$HOME/out.txt" 2>&1
 exit
 touch "\$HOME/outer-shell-survived"
 exit
@@ -195,7 +195,7 @@ test_resource_rc() {
 	cat > "$tmp/input" <<IN
 source $(rc_file)
 echo after-source
-shello --show -n 1 > "\$HOME/out.txt" 2>&1
+shello --show -e -n 1 > "\$HOME/out.txt" 2>&1
 exit
 exit
 IN
@@ -209,7 +209,7 @@ test_redaction() {
 	setup_home "$sh"
 	cat > "$tmp/input" <<'IN'
 echo 'DB_PASSWORD=hunter2'
-shello --show -n 1 > "$HOME/out.txt" 2> "$HOME/err.txt"
+shello --show -e -n 1 > "$HOME/out.txt" 2> "$HOME/err.txt"
 exit
 exit
 IN
@@ -227,7 +227,7 @@ test_repeated_command() {
 HISTCONTROL=ignoredups
 echo again
 echo again
-shello --show -n 2 > "$HOME/out.txt" 2>&1
+shello --show -e -n 2 > "$HOME/out.txt" 2>&1
 exit
 exit
 IN

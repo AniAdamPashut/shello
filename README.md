@@ -39,16 +39,20 @@ shello [OPTIONS] [QUESTION]...
       --show            print the built prompt and exit; call no agent
   -n, --commands <N>    how many past commands to include (default 3)
   -a, --agent <NAME>    which configured agent to use
+  -e, --empty           send no question; the agent explains what happened
   -h, --help / -V, --version
 ```
 
 - `shello why did that fail?` opens a conversation in the agent's own tool,
   with the prompt as the first message.
 - `shello -p what does this error mean` prints one answer and returns.
-- `shello` with no question asks what happened and whether anything went wrong.
-- `shello --show` prints exactly what would be sent.
+- `shello -e` sends just the commands; the agent explains what happened and
+  whether anything went wrong.
+- `shello` on its own prints this help.
+- `shello --show -e` (or `--show` with a question) prints exactly what would be sent.
 
 No quoting is needed, because everything after the options is the question.
+A question is required unless you pass `-e`.
 Use `--` before a question that starts with `-`.
 
 Each command in the prompt comes with the directory it ran in, its exit

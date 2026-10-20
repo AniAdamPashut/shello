@@ -35,6 +35,10 @@ pub fn run(args: &[String]) -> i32 {
         Err(e) => {
             // clap prints help/version to stdout (exit 0) and errors to stderr (exit 2).
             let _ = e.print();
+            if let Some(hint) = cli::hint(&e) {
+                eprintln!("\n{hint}");
+            }
+
             e.exit_code()
         }
     }
