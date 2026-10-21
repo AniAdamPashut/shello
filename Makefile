@@ -11,11 +11,11 @@ integration: build
 	bash tests/install_test.sh
 	bash tests/integration.sh
 
-# Runs the integration test for bash, zsh and fish in an Arch Linux container
+# Runs the integration test for bash, zsh, fish and nushell in an Arch Linux container
 # (glibc, so the host-built binary runs there).
 integration-docker: build
 	docker run --rm --network host -v "$(CURDIR)":/w:ro archlinux:latest sh -c \
-		'pacman -Sy --noconfirm --needed zsh fish python >/dev/null 2>&1 && cp -r /w /r && cd /r && SHELLS="bash zsh fish" bash tests/integration.sh'
+		'pacman -Sy --noconfirm --needed zsh fish nushell python >/dev/null 2>&1 && cp -r /w /r && cd /r && SHELLS="bash zsh fish nu" bash tests/integration.sh'
 
 # Runs each scenarios/*/run.sh in a recorded shell and asks the real agent.
 # Limit it with e.g. `make scenarios S=fastfetch_os`.

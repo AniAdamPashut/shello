@@ -2,7 +2,7 @@
 # Installs shello: the binary, the shell hooks, a default config, and the
 # lines in your shell's startup file that turn recording on.
 #
-#   ./install.sh [--shell bash|zsh|fish]   install (shell defaults to $SHELL)
+#   ./install.sh [--shell bash|zsh|fish|nu]   install (shell defaults to $SHELL)
 #   ./install.sh --uninstall [--purge]     remove; --purge also deletes config and logs
 set -eu
 
@@ -13,6 +13,7 @@ HOOKS_DIR="$SHARE_DIR/hooks"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shello"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/shello"
 FISH_HOOK="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/shello.fish"
+NU_HOOK="${XDG_CONFIG_HOME:-$HOME/.config}/nushell/autoload/shello.nu"
 NEWLINE_NOTE="# (shello added a newline at the end of the line above)"
 
 die() {
@@ -55,8 +56,8 @@ parse_args() {
 install() {
 	shell=${shell:-$(basename "${SHELL:-}")}
 	case $shell in
-	bash | zsh | fish) ;;
-	*) die "unsupported shell '$shell'; use --shell bash|zsh|fish" ;;
+	bash | zsh | fish | nu) ;;
+	*) die "unsupported shell '$shell'; use --shell bash|zsh|fish|nu" ;;
 	esac
 
 	check_script
@@ -94,7 +95,7 @@ install_binary() {
 
 install_hooks() {
 	mkdir -p "$HOOKS_DIR"
-	for f in wrap.sh sweep.sh shello.bash shello.zsh shello.fish; do
+	for f in wrap.sh sweep.sh shello.bash shello.zsh shello.fish shello.nu; do
 		cp "$REPO/hooks/$f" "$HOOKS_DIR/$f"
 		chmod 644 "$HOOKS_DIR/$f"
 	done
@@ -113,6 +114,7 @@ enable_recording() {
 	bash) add_rc_blocks "$HOME/.bashrc" bash ;;
 	zsh) add_rc_blocks "${ZDOTDIR:-$HOME}/.zshrc" zsh ;;
 	fish) mkdir -p "$(dirname "$FISH_HOOK")" && cp "$HOOKS_DIR/shello.fish" "$FISH_HOOK" ;;
+	nu) mkdir -p "$(dirname "$NU_HOOK")" && cp "$HOOKS_DIR/shello.nu" "$NU_HOOK" ;;
 	esac
 }
 
@@ -168,7 +170,7 @@ finish_message() {
 # --- uninstall ---------------------------------------------------------------
 
 uninstall() {
-	rm -f "$BIN_DIR/shello" "$FISH_HOOK"
+	rm -f "$BIN_DIR/shello" "$FISH_HOOK" "$NU_HOOK"
 	rm -rf "$SHARE_DIR"
 	for rc in "$HOME/.bashrc" "${ZDOTDIR:-$HOME}/.zshrc"; do
 		[ -f "$rc" ] && remove_rc_blocks "$rc"

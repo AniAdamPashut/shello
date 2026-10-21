@@ -15,11 +15,11 @@ your setup instead of in general.
 
 ## Install
 
-Requires Linux with util-linux `script`, and bash, zsh or fish. Building
+Requires Linux with util-linux `script`, and bash, zsh, fish or nushell. Building
 from source needs Rust (`cargo`).
 
 ```sh
-./install.sh                 # uses $SHELL; or --shell bash|zsh|fish
+./install.sh                 # uses $SHELL; or --shell bash|zsh|fish|nu
 ```
 
 Then open a new terminal. Recording starts automatically.
@@ -121,7 +121,7 @@ Under `[redact]` you will find settings regarding recation of private keys, API 
   matters.
 - **Hidden commands stay hidden.** A command your shell keeps out of history
   (typed with a leading space, with bash `ignorespace`/`ignoreboth`, zsh
-  `HIST_IGNORE_SPACE`, or in fish) is sent only as "(hidden command)", with
+  `HIST_IGNORE_SPACE`, or in fish and nushell) is sent only as "(hidden command)", with
   no text or output.
 - **The on-disk log is not redacted.** It holds everything the terminal
   showed, is readable only by you, and is deleted when the terminal closes.
@@ -135,5 +135,5 @@ Under `[redact]` you will find settings regarding recation of private keys, API 
 ```sh
 make test                 # unit tests
 make integration          # installer + end-to-end tests with bash
-make integration-docker   # end-to-end with bash, zsh and fish (Arch container)
+make integration-docker   # end-to-end with bash, zsh, fish and nushell (Arch container)
 ```

@@ -2,7 +2,7 @@
 # End-to-end tests: real interactive shells inside util-linux `script`, with
 # the shello rc blocks installed, run commands and then `shello --show`.
 #
-# SHELLS="bash zsh fish" picks the shells to test (missing ones are skipped).
+# SHELLS="bash zsh fish nu" picks the shells to test (missing ones are skipped).
 set -eu
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -29,6 +29,7 @@ setup_home() {
 	case $sh in
 	bash | zsh) write_rc "$sh" > "$HOME/.${sh}rc" ;;
 	fish) mkdir -p "$HOME/.config/fish/conf.d" && cp "$repo/hooks/shello.fish" "$HOME/.config/fish/conf.d/" ;;
+	nu) mkdir -p "$HOME/.config/nushell/autoload" && cp "$repo/hooks/shello.nu" "$HOME/.config/nushell/autoload/" ;;
 	esac
 }
 
@@ -53,6 +54,7 @@ RC
 rc_file() {
 	case $sh in
 	fish) echo "$HOME/.config/fish/conf.d/shello.fish" ;;
+	nu) echo "$HOME/.config/nushell/autoload/shello.nu" ;;
 	*) echo "$HOME/.${sh}rc" ;;
 	esac
 }
@@ -117,7 +119,7 @@ hide_setup() {
 	case $sh in
 	bash) echo "HISTCONTROL=ignorespace" ;;
 	zsh) echo "setopt histignorespace" ;;
-	fish) echo "true" ;;
+	fish | nu) echo "true" ;;
 	esac
 }
 
@@ -344,6 +346,134 @@ test_fallbacks() {
 	echo "ok: shell works when script fails"
 }
 
+# --- nushell -----------------------------------------------------------------------
+# nu's syntax differs from the POSIX shells' and its line editor needs a
+# terminal that answers cursor queries, so it has its own scenarios.
+
+# run_nu_session INPUT [nu args]: tests/pty_session.py types INPUT into `nu -i`.
+run_nu_session() {
+	input=$1
+	shift
+	PATH="$HOME/bin:$PATH" SHELL=$(command -v nu) python3 "$repo/tests/pty_session.py" "$input" nu "${@:--i}" \
+		> "$tmp/terminal.txt" 2>&1 \
+		|| fail "session did not exit cleanly; terminal output:
+$(cat "$tmp/terminal.txt")"
+}
+
+test_nu_recording() {
+	setup_home nu
+	cat > "$tmp/input" <<'IN'
+cd /tmp
+echo hello
+print 'q"uo\te'
+ echo secret-hidden
+^false
+^stat -c %a $"($env.SHELLO_DIR)/($env.SHELLO_SESSION).cmds" o> ($env.HOME | path join perms)
+cp $"($env.SHELLO_DIR)/($env.SHELLO_SESSION).cmds" ($env.HOME | path join cmds.copy)
+shello --show -e -n 8 o+e> ($env.HOME | path join out.txt)
+exit
+touch ($env.HOME | path join outer-shell-survived)
+exit
+IN
+	run_nu_session "$tmp/input"
+
+	cmds="$HOME/cmds.copy"
+	[ "$(wc -l < "$cmds")" -eq 6 ] || fail "expected 6 records: $(cat "$cmds")"
+	[ "$(record "$cmds" 1 cwd)" = "$start_dir" ] || fail "cd should record the dir it ran in: $(sed -n 1p "$cmds")"
+	[ "$(record "$cmds" 2 cwd)" = /tmp ] || fail "echo should record cwd /tmp: $(sed -n 2p "$cmds")"
+	[ "$(record "$cmds" 3 cmd)" = "print 'q\"uo\\te'" ] || fail "command text did not round-trip: $(sed -n 3p "$cmds")"
+	[ "$(record "$cmds" 4 hidden)" = True ] || fail "hidden command not marked hidden: $(sed -n 4p "$cmds")"
+	[ "$(record "$cmds" 5 exit)" = 1 ] || fail "false should record exit 1"
+	expect_not_in secret-hidden "$cmds"
+	[ "$(cat "$HOME/perms")" = 600 ] || fail ".cmds mode is $(cat "$HOME/perms"), want 600"
+
+	out="$HOME/out.txt"
+	for want in '$ echo hello' 'cwd: /tmp' 'hello' 'exit 1' '$ ^false' 'hidden command'; do
+		expect_in "$want" "$out"
+	done
+	expect_not_in 'shello --show' "$out"
+	expect_not_in secret-hidden "$out"
+	outer_exited
+	[ -z "$(ls -A "$HOME/.local/state/shello/sessions")" ] || fail "session files left after the terminal closed"
+	echo "ok: [nu] recording, cwd, hidden commands, cleanup on exit"
+}
+
+test_nu_exec_reload() {
+	setup_home nu
+	cat > "$tmp/input" <<'IN'
+echo first-run
+exec nu
+echo after-exec
+shello --show -e -n 2 o+e> ($env.HOME | path join out.txt)
+exit
+touch ($env.HOME | path join outer-shell-survived)
+exit
+IN
+	run_nu_session "$tmp/input"
+
+	[ "$(block_output "$HOME/out.txt" "echo first-run")" = first-run ] || fail "wrong output after exec nu:
+$(cat "$HOME/out.txt")"
+	[ "$(block_output "$HOME/out.txt" "echo after-exec")" = after-exec ] || fail "exec'd shell not recorded"
+	outer_exited
+	echo "ok: [nu] exec nu keeps outputs apart"
+}
+
+test_nu_resource_rc() {
+	setup_home nu
+	cat > "$tmp/input" <<IN
+source $HOME/.config/nushell/autoload/shello.nu
+echo after-source
+shello --show -e -n 1 o+e> (\$env.HOME | path join out.txt)
+exit
+exit
+IN
+	run_nu_session "$tmp/input"
+
+	[ "$(grep -cxF '$ echo after-source' "$HOME/out.txt")" = 1 ] || fail "wrong output after re-sourcing:
+$(cat "$HOME/out.txt")"
+	echo "ok: [nu] still recording after re-sourcing the hook"
+}
+
+test_nu_command_string() {
+	setup_home nu
+	: > "$tmp/input"
+	run_nu_session "$tmp/input" -ic 'print RAN-IT'
+
+	expect_in RAN-IT "$tmp/terminal.txt"
+	expect_not_in 'recording failed' "$tmp/terminal.txt"
+	echo "ok: [nu] nu -ic runs its command"
+}
+
+test_nu_login_shell() {
+	setup_home nu
+	# Prints rec=42 only inside a recording; computed so the echoed input can't match.
+	cat > "$tmp/input" <<'IN'
+if ($env.SHELLO_SESSION? | is-not-empty) { print $"rec=(40 + 2)" }
+exit
+exit
+IN
+	run_nu_session "$tmp/input" -l -i
+	expect_in rec=42 "$tmp/terminal.txt"
+
+	TERM=linux run_nu_session "$tmp/input" -l -i
+	expect_not_in rec=42 "$tmp/terminal.txt"
+	echo "ok: [nu] login shells are recorded; Linux console is not"
+}
+
+run_nu_tests() {
+	if ! command -v nu > /dev/null; then
+		echo "skip: nu not installed"
+		return
+	fi
+
+	sh=nu
+	run test_nu_recording
+	run test_nu_exec_reload
+	run test_nu_resource_rc
+	run test_nu_command_string
+	run test_nu_login_shell
+}
+
 # --- main ------------------------------------------------------------------------
 
 # ONLY=test_name runs a single scenario.
@@ -352,7 +482,12 @@ run() {
 	"$1"
 }
 
-for sh in ${SHELLS:-bash zsh fish}; do
+for sh in ${SHELLS:-bash zsh fish nu}; do
+	if [ "$sh" = nu ]; then
+		run_nu_tests
+		continue
+	fi
+
 	if ! command -v "$sh" > /dev/null; then
 		echo "skip: $sh not installed"
 		continue

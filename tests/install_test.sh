@@ -23,7 +23,7 @@ SHELL=/bin/bash "$repo/install.sh" > "$tmp/install.log" 2>&1 || fail "install fa
 SHELL=/bin/bash "$repo/install.sh" > "$tmp/install.log" 2>&1 || fail "reinstall failed: $(cat "$tmp/install.log")"
 
 [ -x "$HOME/.local/bin/shello" ] || fail "binary not installed"
-for f in wrap.sh sweep.sh shello.bash shello.zsh shello.fish; do
+for f in wrap.sh sweep.sh shello.bash shello.zsh shello.fish shello.nu; do
 	[ -f "$HOME/.local/share/shello/hooks/$f" ] || fail "hook $f not installed"
 done
 [ -f "$HOME/.config/shello/config.toml" ] || fail "config not installed"
@@ -74,6 +74,12 @@ echo "ok: rc without a final newline"
 "$repo/install.sh" --uninstall > /dev/null 2>&1
 [ ! -e "$HOME/.config/fish/conf.d/shello.fish" ] || fail "fish hook left behind"
 echo "ok: fish install and uninstall"
+
+"$repo/install.sh" --shell nu > /dev/null 2>&1 || fail "nu install failed"
+[ -f "$HOME/.config/nushell/autoload/shello.nu" ] || fail "nu autoload hook not installed"
+"$repo/install.sh" --uninstall > /dev/null 2>&1
+[ ! -e "$HOME/.config/nushell/autoload/shello.nu" ] || fail "nu hook left behind"
+echo "ok: nu install and uninstall"
 
 if SHELL=/bin/tcsh "$repo/install.sh" > "$tmp/err.log" 2>&1; then
 	fail "unsupported shell accepted"
